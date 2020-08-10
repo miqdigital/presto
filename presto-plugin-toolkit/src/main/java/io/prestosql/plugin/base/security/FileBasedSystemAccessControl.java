@@ -15,6 +15,9 @@ package io.prestosql.plugin.base.security;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.inject.Injector;
+import com.google.inject.Scopes;
+import io.airlift.bootstrap.Bootstrap;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.prestosql.plugin.base.security.CatalogAccessControlRule.AccessMode;
@@ -46,6 +49,7 @@ import java.util.regex.Pattern;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Suppliers.memoizeWithExpiration;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.prestosql.plugin.base.security.CatalogAccessControlRule.AccessMode.ALL;
 import static io.prestosql.plugin.base.security.CatalogAccessControlRule.AccessMode.READ_ONLY;
 import static io.prestosql.plugin.base.security.FileBasedAccessControlConfig.SECURITY_CONFIG_FILE;
@@ -138,13 +142,20 @@ public class FileBasedSystemAccessControl
         {
             requireNonNull(config, "config is null");
 
-            String configFileName = config.get(SECURITY_CONFIG_FILE);
+            Bootstrap bootstrap = new Bootstrap(
+                    new FileBasedAccessControlModule("fileBasedSystemAccessControlFactory"));
+            Injector injector = bootstrap.strictConfig()
+                    .doNotInitializeLogging()
+                    .setRequiredConfigurationProperties(config)
+                    .initialize();
+            FileBasedAccessControlConfig fileBasedAccessControlConfig = injector.getInstance(FileBasedAccessControlConfig.class);
+            String configFileName = fileBasedAccessControlConfig.getConfigFile();
             checkState(configFileName != null, "Security configuration must contain the '%s' property", SECURITY_CONFIG_FILE);
 
             if (config.containsKey(SECURITY_REFRESH_PERIOD)) {
                 Duration refreshPeriod;
                 try {
-                    refreshPeriod = Duration.valueOf(config.get(SECURITY_REFRESH_PERIOD));
+                    refreshPeriod = fileBasedAccessControlConfig.getRefreshPeriod();
                 }
                 catch (IllegalArgumentException e) {
                     throw invalidRefreshPeriodException(config, configFileName);
